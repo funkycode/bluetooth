@@ -42,7 +42,9 @@ func handleEvent() {
 			}
 		case C.BLE_GAP_EVT_DISCONNECTED:
 			if debug {
-				println("evt: disconnected")
+				disconn := gapEvent.params.unionfield_disconnected()
+				println("evt: disconnected with reason:", disconn.reason)
+
 			}
 			// Clean up state for this connection.
 			for i, cb := range gattcNotificationCallbacks {
@@ -99,8 +101,81 @@ func handleEvent() {
 		case C.BLE_GAP_EVT_PHY_UPDATE_REQUEST:
 			phyUpdateRequest := gapEvent.params.unionfield_phy_update_request()
 			C.sd_ble_gap_phy_update(gapEvent.conn_handle, &phyUpdateRequest.peer_preferred_phys)
+		case C.BLE_GAP_EVT_CONN_PARAM_UPDATE:
+			// just update on some settings, ignore it
+		case C.BLE_GAP_EVT_CONN_SEC_UPDATE:
+			if debug {
+				println("evt: connection security update")
+			}
+		case C.BLE_GAP_EVT_SEC_INFO_REQUEST:
+			if debug {
+				println("evt: sec info request")
+			}
+
+			secInfo := gapEvent.params.unionfield_sec_info_request()
+			var errCode uint32
+			if secInfo.master_id.ediv == secKeySet.keys_peer.p_enc_key.master_id.ediv {
+				println("evid match")
+				secKeySet.keys_peer.p_enc_key.enc_info.set_bitfield_lesc(1)
+				errCode = C.sd_ble_gap_sec_info_reply(gapEvent.conn_handle, &secKeySet.keys_peer.p_enc_key.enc_info,
+					&secKeySet.keys_peer.p_id_key.id_info, nil) //secKeySet.keys_own
+			} else {
+				println("evid no match")
+				errCode = C.sd_ble_gap_sec_info_reply(gapEvent.conn_handle, nil,
+					&secKeySet.keys_peer.p_id_key.id_info, nil)
+			}
+			if errCode != 0 {
+				println("security info request failed:", Error(errCode).Error())
+				return
+			}
+			println("security info request succeesess")
+
 		case C.BLE_GAP_EVT_AUTH_STATUS:
 			// here we get auth response
+			if debug {
+				authStatus := gapEvent.params.unionfield_auth_status()
+				if authStatus.auth_status != C.BLE_GAP_SEC_STATUS_SUCCESS {
+					if authStatus.bitfield_error_src() == C.BLE_GAP_SEC_STATUS_SOURCE_LOCAL {
+						println("auth failed from local source")
+					} else {
+						println("auth failed from remote source")
+					}
+					println("auth status failed with status:", authStatus.auth_status)
+					break
+				}
+				if authStatus.bitfield_bonded() == 1 {
+					println("auth status is bonded")
+				}
+				if authStatus.bitfield_lesc() == 1 {
+					println("connection is LE secure")
+				}
+				if authStatus.kdist_own.bitfield_enc() != 0 {
+					println("local peer distributed encription keys")
+				}
+				if authStatus.kdist_own.bitfield_id() != 0 {
+					println("local peer distributed id keys")
+				}
+				if authStatus.kdist_own.bitfield_sign() != 0 {
+					println("local peer distributed sign keys")
+				}
+				if authStatus.kdist_own.bitfield_link() != 0 {
+					println("local peer distributed link keys")
+				}
+
+				if authStatus.kdist_peer.bitfield_enc() != 0 {
+					println("remote peer distributed encription keys")
+				}
+				if authStatus.kdist_peer.bitfield_id() != 0 {
+					println("remote peer distributed id keys")
+				}
+				if authStatus.kdist_peer.bitfield_sign() != 0 {
+					println("remote peer distributed sign keys")
+				}
+				if authStatus.kdist_peer.bitfield_link() != 0 {
+					println("remote peer distributed link keys")
+				}
+			}
+
 			// TODO: save keys to flash for pairing/bonding
 		case C.BLE_GAP_EVT_PHY_UPDATE:
 		// ignore confirmation of phy successfully updated
@@ -123,12 +198,16 @@ func handleEvent() {
 			}
 
 		case C.BLE_GAP_EVT_LESC_DHKEY_REQUEST:
-		// TODO: for LESC connection implementation
-		// 	peerPk := eventBuf.evt.unionfield_gatts_evt()
-		// 	sd_ble_gap_lesc_dhkey_reply(gapEvent.conn_handle, ble_gap_lesc_dhkey_t const *p_dhkey))
+			if debug {
+				println("evt: lesc dhkey request")
+			}
+			//	lesc_request := gapEvent.params.unionfield_lesc_dhkey_request()
+			//DefaultAdapter.lescRequestHandler(lesc_request.p_pk_peer.pk[:])
+			DefaultAdapter.lescRequestHandler(secKeySet.keys_peer.p_pk.pk[:])
+
 		default:
 			if debug {
-				println("unknown GAP event:", id)
+				println("unknown GAP event:", id-C.BLE_GAP_EVT_BASE)
 			}
 		}
 	case id >= C.BLE_GATTS_EVT_BASE && id <= C.BLE_GATTS_EVT_LAST:

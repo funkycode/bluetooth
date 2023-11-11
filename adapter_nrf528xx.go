@@ -38,25 +38,48 @@ var (
 		max_key_size: 16,
 	}
 
-	secKeySet C.ble_gap_sec_keyset_t = C.ble_gap_sec_keyset_t{
-		keys_peer: C.ble_gap_sec_keys_t{
-			p_enc_key:  &C.ble_gap_enc_key_t{},   /**< Encryption Key, or NULL. */
-			p_id_key:   &C.ble_gap_id_key_t{},    /**< Identity Key, or NULL. */
-			p_sign_key: &C.ble_gap_sign_info_t{}, /**< Signing Key, or NULL. */
-			p_pk:       &C.ble_gap_lesc_p256_pk_t{},
-		},
-		keys_own: C.ble_gap_sec_keys_t{
-			p_enc_key:  &C.ble_gap_enc_key_t{},   /**< Encryption Key, or NULL. */
-			p_id_key:   &C.ble_gap_id_key_t{},    /**< Identity Key, or NULL. */
-			p_sign_key: &C.ble_gap_sign_info_t{}, /**< Signing Key, or NULL. */
-			p_pk:       &C.ble_gap_lesc_p256_pk_t{},
-		},
-	}
+	secKeySet C.ble_gap_sec_keyset_t
 )
 
 // are those should be methods for adapter as they are relevant for sd only
 func SetSecParamsBonding() {
 	secParams.set_bitfield_bond(1)
+}
+
+func SetSecParamsLesc() {
+	secParams.set_bitfield_bond(0) //1)
+	secParams.set_bitfield_lesc(1)
+	//secParams.set_bitfield_mitm(1)
+	//secParams.set_bitfield_io_caps(uint8(DisplayOnlyGapIOCapability))
+}
+
+func SetLesPublicKey(key []uint8) {
+	secKeySet.keys_peer = C.ble_gap_sec_keys_t{
+		p_pk:       &C.ble_gap_lesc_p256_pk_t{},
+		p_enc_key:  &C.ble_gap_enc_key_t{},
+		p_id_key:   &C.ble_gap_id_key_t{},
+		p_sign_key: &C.ble_gap_sign_info_t{},
+	}
+	secKeySet.keys_own = C.ble_gap_sec_keys_t{
+		p_enc_key:  &C.ble_gap_enc_key_t{},
+		p_id_key:   &C.ble_gap_id_key_t{},
+		p_sign_key: &C.ble_gap_sign_info_t{},
+		p_pk: &C.ble_gap_lesc_p256_pk_t{
+			pk: [C.BLE_GAP_LESC_P256_PK_LEN]uint8(key),
+		},
+	}
+}
+
+func ReplyLesc(key []byte) error {
+	lescKey := C.ble_gap_lesc_dhkey_t{
+		key: [C.BLE_GAP_LESC_DHKEY_LEN]uint8(key),
+	}
+	errCode := C.sd_ble_gap_lesc_dhkey_reply(currentConnection.Reg, &lescKey)
+	if errCode != 0 {
+		return Error(errCode)
+
+	}
+	return nil
 }
 
 func SetSecCapabilities(cap GapIOCapability) {
@@ -102,4 +125,8 @@ func (a *Adapter) Address() (MACAddress, error) {
 		return MACAddress{}, Error(errCode)
 	}
 	return MACAddress{MAC: addr.addr}, nil
+}
+
+func (a *Adapter) SetLescRequestHandler(c func(pubKey []uint8)) {
+	a.lescRequestHandler = c
 }
