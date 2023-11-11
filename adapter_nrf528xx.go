@@ -47,15 +47,23 @@ func SetSecParamsBonding() {
 }
 
 func SetSecParamsLesc() {
-	secParams.set_bitfield_bond(0)
+	secParams.set_bitfield_bond(0) //1)
 	secParams.set_bitfield_lesc(1)
+	//secParams.set_bitfield_mitm(1)
+	//secParams.set_bitfield_io_caps(uint8(DisplayOnlyGapIOCapability))
 }
 
 func SetLesPublicKey(key []uint8) {
 	secKeySet.keys_peer = C.ble_gap_sec_keys_t{
-		p_pk: &C.ble_gap_lesc_p256_pk_t{},
+		p_pk:       &C.ble_gap_lesc_p256_pk_t{},
+		p_enc_key:  &C.ble_gap_enc_key_t{},
+		p_id_key:   &C.ble_gap_id_key_t{},
+		p_sign_key: &C.ble_gap_sign_info_t{},
 	}
 	secKeySet.keys_own = C.ble_gap_sec_keys_t{
+		p_enc_key:  &C.ble_gap_enc_key_t{},
+		p_id_key:   &C.ble_gap_id_key_t{},
+		p_sign_key: &C.ble_gap_sign_info_t{},
 		p_pk: &C.ble_gap_lesc_p256_pk_t{
 			pk: [C.BLE_GAP_LESC_P256_PK_LEN]uint8(key),
 		},

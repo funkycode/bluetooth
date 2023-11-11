@@ -42,7 +42,9 @@ func handleEvent() {
 			}
 		case C.BLE_GAP_EVT_DISCONNECTED:
 			if debug {
-				println("evt: disconnected")
+				disconn := gapEvent.params.unionfield_disconnected()
+				println("evt: disconnected with reason:", disconn.reason)
+
 			}
 			// Clean up state for this connection.
 			for i, cb := range gattcNotificationCallbacks {
@@ -99,6 +101,35 @@ func handleEvent() {
 		case C.BLE_GAP_EVT_PHY_UPDATE_REQUEST:
 			phyUpdateRequest := gapEvent.params.unionfield_phy_update_request()
 			C.sd_ble_gap_phy_update(gapEvent.conn_handle, &phyUpdateRequest.peer_preferred_phys)
+		case C.BLE_GAP_EVT_CONN_PARAM_UPDATE:
+			// just update on some settings, ignore it
+		case C.BLE_GAP_EVT_CONN_SEC_UPDATE:
+			if debug {
+				println("evt: connection security update")
+			}
+		case C.BLE_GAP_EVT_SEC_INFO_REQUEST:
+			if debug {
+				println("evt: sec info request")
+			}
+
+			secInfo := gapEvent.params.unionfield_sec_info_request()
+			var errCode uint32
+			if secInfo.master_id.ediv == secKeySet.keys_peer.p_enc_key.master_id.ediv {
+				println("evid match")
+				secKeySet.keys_peer.p_enc_key.enc_info.set_bitfield_lesc(1)
+				errCode = C.sd_ble_gap_sec_info_reply(gapEvent.conn_handle, &secKeySet.keys_peer.p_enc_key.enc_info,
+					&secKeySet.keys_peer.p_id_key.id_info, nil) //secKeySet.keys_own
+			} else {
+				println("evid no match")
+				errCode = C.sd_ble_gap_sec_info_reply(gapEvent.conn_handle, nil,
+					&secKeySet.keys_peer.p_id_key.id_info, nil)
+			}
+			if errCode != 0 {
+				println("security info request failed:", Error(errCode).Error())
+				return
+			}
+			println("security info request succeesess")
+
 		case C.BLE_GAP_EVT_AUTH_STATUS:
 			// here we get auth response
 			if debug {
@@ -148,8 +179,6 @@ func handleEvent() {
 			// TODO: save keys to flash for pairing/bonding
 		case C.BLE_GAP_EVT_PHY_UPDATE:
 		// ignore confirmation of phy successfully updated
-		case C.BLE_GAP_EVT_CONN_SEC_UPDATE:
-
 		case C.BLE_GAP_EVT_SEC_PARAMS_REQUEST:
 			if debug {
 				println("evt: security parameters request")
@@ -178,7 +207,7 @@ func handleEvent() {
 
 		default:
 			if debug {
-				println("unknown GAP event:", id)
+				println("unknown GAP event:", id-C.BLE_GAP_EVT_BASE)
 			}
 		}
 	case id >= C.BLE_GATTS_EVT_BASE && id <= C.BLE_GATTS_EVT_LAST:
